@@ -1,7 +1,0 @@
-{
-  "_comment": "Manual power ratings, keyed by ESPN league id then ESPN team id. Anything missing defaults to 50. Edit here, then run build.py to publish.",
-  "62403137": {},
-  "1490615607": {},
-  "1818479777": {},
-  "1098609042": {}
-}

@@ -118,6 +118,15 @@ body.points th.pointsonly{display:table-cell}
 .note{color:var(--warn);font-size:12px;margin-top:9px;display:none}
 .note.show{display:block}
 
+/* Publish carries a dot whenever this device holds something the live site has not
+   seen, so "did that save?" is answerable at a glance rather than by reloading. */
+#publish.dirty{background:var(--accent);border-color:var(--accent);color:#06101f;font-weight:600}
+.pubpanel{margin-top:12px;background:var(--panel);border:1px solid var(--line);
+  border-radius:8px;padding:11px 12px;display:flex;flex-direction:column;gap:9px}
+.pubrow{display:flex;gap:9px;align-items:center;flex-wrap:wrap;font-size:12.5px}
+.pubrow input[type=password]{width:320px;max-width:100%}
+.pubrow a{color:var(--accent)}
+
 details{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
 summary{cursor:pointer;padding:9px 12px;font-size:12.5px;font-weight:600;list-style:none}
 summary::-webkit-details-marker{display:none}
@@ -285,10 +294,10 @@ textarea:focus{border-color:var(--accent)}
 
   <div class="bar">
     <button id="add" class="lockable">+ Team</button>
-    <button id="sort" class="lockable">Sort by rating</button>
     <button id="copy">Copy board</button>
     <button id="share">Copy link</button>
     <button id="reset" class="lockable">Reset</button>
+    <button id="publish" class="lockable pub">Publish</button>
     <!-- Grouped so the two totals wrap as a pair rather than splitting across
          lines when the buttons take the width. Pushed right by margin, not a
          flex spacer, which would force them onto their own line when wrapping. -->
@@ -297,6 +306,8 @@ textarea:focus{border-color:var(--accent)}
       <div class="stat p"><span class="k">Last book</span><b id="hp">&mdash;</b></div>
     </div>
   </div>
+
+  <div id="pubpanel" class="pubpanel" hidden></div>
 
   <div id="note" class="note"></div>
 
@@ -382,9 +393,14 @@ textarea:focus{border-color:var(--accent)}
    directly for development. */
 
 const LEAGUES = /*__LEAGUES__*/ {"fetched":"","season":0,"leagues":[]};
-const RATINGS = /*__RATINGS__*/ {};
+const BOARD   = /*__BOARD__*/ {"version":1,"updated":"","leagues":{}};
+const REPO    = /*__REPO__*/ {"owner":"","repo":"","branch":"main","path":"board.json"};
 const LOCK    = /*__LOCK__*/ null;
 const BUILT   = /*__BUILT__*/ "";
+
+// The published board, once fetched. BOARD is only the copy baked at build time --
+// a fallback for when the fetch fails, and the reason the page still works offline.
+let published = BOARD;
 
 const $ = s => document.querySelector(s);
 
@@ -393,6 +409,8 @@ const $ = s => document.querySelector(s);
 const S = {
   league: "",
   boards: {},          // leagueId -> its rows, so switching away keeps your edits
+  settings: {},        // leagueId -> its own dials, so each league prices its own way
+  touched: {},         // leagues edited since the last publish
   teams: [],           // the active board; always the same array as boards[league]
   kWin: 3, kLast: 2, link: false,
   vig: 4.76,
@@ -401,34 +419,83 @@ const S = {
   mode: "manual", games: 0
 };
 
+// Cached display order, so the table can hold still while a row is being typed into.
+let rowOrder = null;
+
 const leagueList = () => (LEAGUES.leagues || []);
 const leagueById = id => leagueList().find(l => l.id === id) || leagueList()[0] || null;
 
-// A row starts from ESPN and from ratings.json; everything else is a local edit.
+// What each league carries of its own. fmt is a viewer's preference and `games` is
+// ESPN's fact, so neither is published -- everything here is a pricing decision.
+const KNOB_DEFAULTS = {
+  kWin: 3, kLast: 2, link: false, vig: 4.76,
+  capOn: true, cap: 2500, tidy: true, mode: "manual"
+};
+const PUB_KNOBS = Object.keys(KNOB_DEFAULTS);
+
+const pubFor = id => (published.leagues || {})[id] || {};
+
+function settingsFor(id){
+  return Object.assign({}, KNOB_DEFAULTS, pubFor(id).settings || {});
+}
+
+// A row starts from ESPN, then the published board overrides what the commissioner
+// set. Owner and PPG are always re-attached from ESPN by team id: they are facts
+// about the league, not settings, so a stale published copy must never win on them.
 function boardFor(id){
   const lg = leagueById(id);
   if (!lg) return [];
-  const saved = RATINGS[lg.id] || {};
+  const espn = new Map(lg.teams.map(t => [String(t.id), t]));
+  const saved = pubFor(id).teams;
+
+  if (Array.isArray(saved) && saved.length){
+    return saved.map(t => {
+      const e = t.id != null ? espn.get(String(t.id)) : null;
+      return {
+        id: t.id ?? null,
+        name: String(t.name ?? (e ? e.name : "Team")),
+        owner: e ? (e.owner || "") : "",
+        rating: Number(t.rating) || 50,
+        ppg: (e && e.ppg != null) ? Number(e.ppg) : null,
+        pre: t.pre == null ? null : Number(t.pre)
+      };
+    });
+  }
+
   return lg.teams.map(t => ({
     id: t.id,
     name: t.name,
     owner: t.owner || "",
-    rating: Number(saved[t.id]) || 50,
+    rating: 50,
     ppg: (t.ppg === null || t.ppg === undefined) ? null : Number(t.ppg),
     pre: null
   }));
 }
 
+const stashKnobs = () => {
+  if (S.league) S.settings[S.league] = Object.fromEntries(PUB_KNOBS.map(k => [k, S[k]]));
+};
+
 function selectLeague(id, fresh){
   const lg = leagueById(id);
   if (!lg) return;
-  if (S.league && S.teams.length) S.boards[S.league] = S.teams;   // park the old board
+  if (S.league && S.teams.length){ S.boards[S.league] = S.teams; stashKnobs(); }  // park the old league
   S.league = lg.id;
-  S.teams = (!fresh && S.boards[lg.id]) ? S.boards[lg.id] : boardFor(lg.id);
+
+  if (fresh){ delete S.boards[lg.id]; delete S.settings[lg.id]; }
+  S.teams = S.boards[lg.id] || boardFor(lg.id);
   S.boards[lg.id] = S.teams;
+
+  // Each league prices on its own dials -- a 10-team board and a 12-team board do
+  // not want the same k, and the vig is a per-pool decision.
+  const knobs = S.settings[lg.id] || settingsFor(lg.id);
+  PUB_KNOBS.forEach(k => { if (knobs[k] !== undefined) S[k] = knobs[k]; });
+  S.settings[lg.id] = knobs;
+
   // Games played is ESPN's, not a guess: it drives how hard From-points shrinks
   // toward the preseason prior.
   S.games = Math.max(0, ...lg.teams.map(t => Number(t.games) || 0));
+  rowOrder = null;
   syncControls();
 }
 
@@ -635,10 +702,22 @@ function render(){
   const derived = S.mode === "points" && zRatings();
   const esc = v => String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
 
+  // Rows read favourite-first, i.e. win odds ascending. Sorted on the fair
+  // probability rather than the posted price, so teams pinned together at the
+  // longshot cap still come out in the right order.
+  // Held still while a row input has focus: re-sorting between keystrokes would
+  // slide the box out from under the cursor mid-number.
+  const editing = document.activeElement && document.activeElement.closest
+    && document.activeElement.closest("#rows");
+  if (!editing || !rowOrder || rowOrder.length !== S.teams.length)
+    rowOrder = pW.map((_, i) => i).sort((a, b) => pW[b] - pW[a]);
+  const order = rowOrder;
+
   const tb = $("#rows");
   tb.innerHTML = "";
 
-  S.teams.forEach((t, i) => {
+  order.forEach((i, pos) => {
+    const t = S.teams[i];
     // Locked, the board renders as text rather than as greyed-out inputs. Fading a
     // form leaves the team names hard to read, and read-only is what it actually is.
     const nameCell = unlocked
@@ -656,7 +735,7 @@ function render(){
 
     const tr = document.createElement("tr");
     tr.innerHTML =
-      '<td class="rank">' + (i+1) + '</td>' +
+      '<td class="rank">' + (pos+1) + '</td>' +
       '<td class="l">' + nameCell + ownCell + '</td>' +
       '<td class="pointsonly">' + cell("ppg", t.ppg, "0.1") + '</td>' +
       '<td class="pointsonly">' + cell("pre", t.pre, "1") + '</td>' +
@@ -689,9 +768,11 @@ function render(){
   note.textContent = warnings.join("  ");
   note.classList.toggle("show", warnings.length > 0);
 
+  // bestW/bestL index the data; the table is in display order, so map across.
   const rows = tb.querySelectorAll("tr");
-  if (rows[bestW]) rows[bestW].classList.add("favW");
-  if (rows[bestL]) rows[bestL].classList.add("favL");
+  const at = i => rows[order.indexOf(i)];
+  if (at(bestW)) at(bestW).classList.add("favW");
+  if (at(bestL)) at(bestL).classList.add("favL");
 
   save();
 }
@@ -702,12 +783,29 @@ $("#rows").addEventListener("input", e => {
   if (!unlocked) return;
   const el = e.target, i = +el.dataset.i, f = el.dataset.f;
   if (f === undefined) return;
-  if (f === "name") { S.teams[i].name = el.value; save(); return; }   // no re-render: keeps focus
+  if (f === "name") { S.teams[i].name = el.value; markDirty(); save(); return; }   // no re-render: keeps focus
   S.teams[i][f] = el.value === "" ? null : Number(el.value);
+  markDirty();
   const at = document.activeElement, k = at && at.dataset ? at.dataset.f + at.dataset.i : null;
   render();
   if (k){ const back = document.querySelector('[data-f="' + at.dataset.f + '"][data-i="' + at.dataset.i + '"]');
           if (back) back.focus(); }
+});
+
+// Re-sorting is safe once the cursor has left the field. There are three ways out --
+// tab, Enter/commit, and clicking elsewhere -- and they are covered separately because
+// no one of them catches the other two.
+function resortIfIdle(){
+  setTimeout(() => {
+    const still = document.activeElement && document.activeElement.closest
+      && document.activeElement.closest("#rows");
+    if (!still){ rowOrder = null; render(); }
+  }, 0);
+}
+$("#rows").addEventListener("focusout", resortIfIdle);   // tabbed away
+$("#rows").addEventListener("change", resortIfIdle);     // committed with Enter, or blurred
+document.addEventListener("pointerdown", e => {          // clicked somewhere else
+  if (rowOrder && !(e.target.closest && e.target.closest("#rows"))) resortIfIdle();
 });
 
 $("#rows").addEventListener("click", e => {
@@ -716,6 +814,8 @@ $("#rows").addEventListener("click", e => {
   if (d === undefined) return;
   if (S.teams.length <= 2) return toast("Need at least two teams");
   S.teams.splice(+d, 1);
+  markDirty();
+  rowOrder = null;
   render();
 });
 
@@ -730,6 +830,7 @@ function pair(rangeId, numId, key, after){
     if (!isFinite(v)) return;
     S[key] = v; R.value = v; N.value = v;
     if (after) after();
+    markDirty();
     render();
   };
   R.addEventListener("input", e => set(e.target.value));
@@ -745,6 +846,7 @@ const setVig = pair("#vgR", "#vgN", "vig");
 
 $("#link").addEventListener("click", () => {
   S.link = !S.link;
+  markDirty();
   $("#link").classList.toggle("on", S.link);
   if (S.link) setKw(S.kWin);
 });
@@ -752,9 +854,9 @@ $("#link").addEventListener("click", () => {
 document.querySelectorAll("[data-vig]").forEach(b =>
   b.addEventListener("click", () => setVig(b.dataset.vig)));
 
-$("#capOn").addEventListener("change", e => { S.capOn = e.target.checked; render(); });
-$("#capN").addEventListener("input",  e => { S.cap = Number(e.target.value) || 2500; render(); });
-$("#tidy").addEventListener("change", e => { S.tidy = e.target.checked; render(); });
+$("#capOn").addEventListener("change", e => { S.capOn = e.target.checked; markDirty(); render(); });
+$("#capN").addEventListener("input",  e => { S.cap = Number(e.target.value) || 2500; markDirty(); render(); });
+$("#tidy").addEventListener("change", e => { S.tidy = e.target.checked; markDirty(); render(); });
 $("#games").addEventListener("input", e => { S.games = Number(e.target.value) || 0; render(); });
 
 function seg(aId, bId, key, aVal, bVal, extra){
@@ -764,6 +866,7 @@ function seg(aId, bId, key, aVal, bVal, extra){
     A.classList.toggle("on", v === aVal);
     B.classList.toggle("on", v === bVal);
     if (extra) extra(v);
+    if (key !== "fmt") markDirty();   // American/Decimal is a viewer preference, not a price
     render();
   };
   A.addEventListener("click", () => pick(aVal));
@@ -777,23 +880,18 @@ const setMode = seg("#mM", "#mP", "mode", "manual", "points",
 $("#add").addEventListener("click", () => {
   S.teams.push({ id: null, name: "Team " + (S.teams.length+1), owner: "",
                  rating: 50, ppg: null, pre: null });
-  render();
-});
-
-$("#sort").addEventListener("click", () => {
-  const r = effectiveRatings();
-  S.teams = S.teams
-    .map((t,i) => [t, isFinite(r[i]) ? r[i] : 0])
-    .sort((a,b) => b[1] - a[1])
-    .map(x => x[0]);
-  S.boards[S.league] = S.teams;
+  markDirty();
+  rowOrder = null;
   render();
 });
 
 $("#reset").addEventListener("click", () => {
-  selectLeague(S.league, true);      // straight back to ESPN + ratings.json
+  const id = S.league;
+  delete S.touched[id];
+  selectLeague(id, true);            // back to the published board, or ESPN if never published
+  save();
   render();
-  toast("Reloaded from ESPN");
+  toast("Reloaded " + (leagueById(id) || {}).name);
 });
 
 $("#doPaste").addEventListener("click", () => {
@@ -813,6 +911,8 @@ $("#doPaste").addEventListener("click", () => {
   if (teams.length < 2) return toast("Need at least two teams");
   S.teams = teams;
   S.boards[S.league] = teams;
+  markDirty();
+  rowOrder = null;
   render();
   toast("Imported " + teams.length + " teams");
 });
@@ -878,8 +978,10 @@ const b64e = s => btoa(String.fromCharCode(...new TextEncoder().encode(s)))
   .replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
 const b64d = s => new TextDecoder().decode(
   Uint8Array.from(atob(s.replace(/-/g,"+").replace(/_/g,"/")), c => c.charCodeAt(0)));
+// GitHub wants standard base64, not the url-safe variant a link uses.
+const b64std = s => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 
-const KNOBS = ["kWin","kLast","link","vig","capOn","cap","tidy","fmt","mode","games"];
+const KNOBS = PUB_KNOBS.concat(["fmt", "games"]);
 
 // A link carries only the league you are looking at. Sending all four boards would
 // quadruple it for no one's benefit -- the other three are baked into the page anyway.
@@ -907,6 +1009,7 @@ function applyLink(obj){
   S.league = id;
   S.teams = cleanTeams(obj.teams);
   S.boards[id] = S.teams;
+  stashKnobs();
   return true;
 }
 
@@ -937,19 +1040,26 @@ function syncControls(){
   $("#mM").classList.toggle("on", S.mode === "manual");
   $("#mP").classList.toggle("on", S.mode === "points");
   $("#gWrap").style.display = S.mode === "points" ? "flex" : "none";
+  markPublishState();
 }
 
+// Only the commissioner keeps local state. A viewer who never edits must always see
+// the published board -- otherwise one stray localStorage copy would pin a device to
+// a board nobody can update, which is exactly what publishing is meant to fix.
 function save(){
+  if (!unlocked) return;
   try {
     S.boards[S.league] = S.teams;
-    const o = { league: S.league, boards: S.boards };
-    KNOBS.forEach(k => o[k] = S[k]);
-    localStorage.setItem("fantasy-futures", JSON.stringify(o));
+    stashKnobs();
+    localStorage.setItem("fantasy-futures", JSON.stringify({
+      league: S.league, boards: S.boards, settings: S.settings,
+      touched: S.touched, fmt: S.fmt, savedAt: new Date().toISOString()
+    }));
   } catch(e){}
 }
 
 function load(){
-  // A link beats whatever is stored, so a shared board always opens as sent.
+  // A link beats everything, so a shared board always opens as sent.
   if (location.hash.length > 1){
     try {
       if (applyLink(JSON.parse(b64d(location.hash.slice(1))))){
@@ -962,34 +1072,214 @@ function load(){
     const raw = localStorage.getItem("fantasy-futures");
     if (!raw) return false;
     const o = JSON.parse(raw);
-    KNOBS.forEach(k => { if (o[k] !== undefined) S[k] = o[k]; });
+
+    // A newer publish wins over this device's leftovers. Without this, the laptop you
+    // last edited on would keep showing its own board forever.
+    if (published.updated && o.savedAt && published.updated > o.savedAt){
+      localStorage.removeItem("fantasy-futures");
+      return false;
+    }
+
+    S.fmt = o.fmt || S.fmt;
+    S.touched = o.touched || {};
+    if (o.settings && typeof o.settings === "object") S.settings = o.settings;
     if (o.boards && typeof o.boards === "object"){
       Object.keys(o.boards).forEach(id => {
         if (Array.isArray(o.boards[id]) && o.boards[id].length)
           S.boards[id] = cleanTeams(o.boards[id]);
       });
     }
-    if (leagueById(o.league)){
-      S.league = o.league;
-      S.teams = S.boards[o.league] || boardFor(o.league);
-      S.boards[S.league] = S.teams;
-      return true;
-    }
+    if (leagueById(o.league)){ selectLeague(o.league); return true; }
   } catch(e){}
   return false;
 }
 
+/* ---------- publishing ----------
+   GitHub Pages has no server, so the page writes board.json straight to the repo
+   through the GitHub contents API and Pages redeploys. board.json is fetched at
+   runtime rather than baked, which is what lets a publish reach every device
+   without anyone running a build. */
+
+const TOKEN_KEY = "ff-token";
+
+const getToken = () => {
+  try { return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || ""; }
+  catch(e){ return ""; }
+};
+
+function setToken(v, remember){
+  try {
+    if (v) sessionStorage.setItem(TOKEN_KEY, v); else sessionStorage.removeItem(TOKEN_KEY);
+    if (v && remember) localStorage.setItem(TOKEN_KEY, v); else localStorage.removeItem(TOKEN_KEY);
+  } catch(e){}
+}
+
+function markDirty(){
+  if (S.league) S.touched[S.league] = true;
+  markPublishState();
+}
+
+const isDirty = () => Object.keys(S.touched).length > 0;
+
+function markPublishState(){
+  const b = $("#publish");
+  if (!b) return;
+  const n = Object.keys(S.touched).length;
+  b.textContent = n ? "Publish •" : "Publish";
+  b.title = n
+    ? n + (n === 1 ? " league has" : " leagues have") + " unpublished changes"
+    : "Everything here matches the published board";
+  b.classList.toggle("dirty", n > 0);
+}
+
+// Leagues the commissioner has actually touched this session are rewritten; every
+// other league is passed through exactly as published, so editing one board can
+// never quietly reset the other three.
+function payload(){
+  S.boards[S.league] = S.teams;
+  stashKnobs();
+
+  const leagues = Object.assign({}, published.leagues || {});
+  Object.keys(S.touched).forEach(id => {
+    if (!leagueById(id) || !S.boards[id]) return;
+    leagues[id] = {
+      settings: S.settings[id] || settingsFor(id),
+      teams: S.boards[id].map(t => {
+        const row = { id: t.id ?? null, name: t.name, rating: Number(t.rating) || 50 };
+        if (t.pre != null) row.pre = Number(t.pre);
+        return row;
+      })
+    };
+  });
+  return { version: 1, updated: new Date().toISOString(), leagues };
+}
+
+async function pushBoard(token, body){
+  const api = "https://api.github.com/repos/" + REPO.owner + "/" + REPO.repo +
+              "/contents/" + REPO.path;
+  const H = {
+    Authorization: "Bearer " + token,
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28"
+  };
+
+  // The current blob sha is required to replace a file, and doubles as the
+  // concurrency check: it is stale if another device published in the meantime.
+  let sha = null;
+  const head = await fetch(api + "?ref=" + encodeURIComponent(REPO.branch),
+                           { headers: H, cache: "no-store" });
+  if (head.ok) sha = (await head.json()).sha;
+  else if (head.status === 401) throw new Error("GitHub rejected that token (401).");
+  else if (head.status === 403) throw new Error("That token can't reach this repo (403). It needs Contents: read and write.");
+  else if (head.status !== 404) throw new Error("GitHub returned " + head.status + " reading " + REPO.path + ".");
+
+  const put = await fetch(api, {
+    method: "PUT",
+    headers: H,
+    body: JSON.stringify(Object.assign({
+      message: "Update board from the live page",
+      content: b64std(JSON.stringify(body, null, 2) + "\n"),
+      branch: REPO.branch
+    }, sha ? { sha } : {}))
+  });
+
+  if (put.status === 409 || put.status === 422)
+    throw new Error("Someone published since this page loaded. Reload, redo your changes, and publish again.");
+  if (put.status === 401 || put.status === 403)
+    throw new Error("That token can't write to this repo (" + put.status + ").");
+  if (!put.ok) throw new Error("GitHub returned " + put.status + " writing " + REPO.path + ".");
+
+  const done = await put.json();
+  return done.commit && done.commit.sha ? done.commit.sha.slice(0, 7) : "committed";
+}
+
+function openPublish(){
+  const el = $("#pubpanel");
+  el.hidden = false;
+  const need = !getToken();
+  const names = Object.keys(S.touched).map(id => (leagueById(id) || {}).name).filter(Boolean);
+
+  el.innerHTML =
+    '<div class="pubrow"><b>' +
+      (names.length ? "Publishing " + names.join(", ") : "Nothing has changed yet") +
+    '</b></div>' +
+    (need
+      ? '<div class="pubrow"><input type="password" id="tok" placeholder="GitHub token (ghp_… or github_pat_…)" autocomplete="off">' +
+        '<label class="chk"><input type="checkbox" id="remember"> remember on this device</label></div>' +
+        '<div class="pubrow hint">Fine-grained token, this repo only, Contents: read and write. ' +
+        'It is stored in this browser and sent only to api.github.com.</div>'
+      : '<div class="pubrow hint">Using the token saved in this browser. ' +
+        '<a href="#" id="forget">Forget it</a></div>') +
+    '<div class="pubrow"><button id="doPub">Publish to the live site</button>' +
+    '<button id="pubCancel">Cancel</button>' +
+    '<button id="copyJson">Copy JSON instead</button>' +
+    '<span class="hint" id="pubmsg"></span></div>';
+
+  $("#pubCancel").onclick = () => { el.hidden = true; };
+  $("#doPub").onclick = doPublish;
+  $("#copyJson").onclick = () =>
+    copy(JSON.stringify(payload(), null, 2), "board.json copied — paste it into the repo");
+  if ($("#forget")) $("#forget").onclick = e => {
+    e.preventDefault(); setToken("", false); openPublish(); toast("Token forgotten");
+  };
+}
+
+async function doPublish(){
+  const msg = $("#pubmsg"), btn = $("#doPub");
+  const field = $("#tok");
+  const token = field ? field.value.trim() : getToken();
+
+  // Order matters: being told to go find a token, only to learn there was nothing to
+  // publish anyway, is the wrong way round.
+  if (!isDirty()){ msg.textContent = "nothing to publish"; return; }
+  if (!token){ msg.textContent = "a token is needed"; return; }
+
+  btn.disabled = true;
+  msg.textContent = "publishing…";
+  const body = payload();
+
+  try {
+    const sha = await pushBoard(token, body);
+    if (field) setToken(token, $("#remember") && $("#remember").checked);
+    published = body;              // what we just wrote is now the published truth
+    S.touched = {};
+    save();
+    markPublishState();
+    $("#pubpanel").hidden = true;
+    toast("Published (" + sha + ") — live in about a minute");
+  } catch (e) {
+    btn.disabled = false;
+    msg.textContent = e.message;
+  }
+}
+
+$("#publish").addEventListener("click", openPublish);
+
 /* ---------- start ---------- */
 
-try { unlocked = !LOCK || sessionStorage.getItem("ff-unlocked") === "1"; }
-catch(e){ unlocked = !LOCK; }
+async function loadPublished(){
+  try {
+    const r = await fetch(REPO.path + "?t=" + Date.now(), { cache: "no-store" });
+    if (r.ok){
+      const j = await r.json();
+      if (j && typeof j === "object" && j.leagues) published = j;
+    }
+  } catch(e){ /* the baked copy stands, so the page still works offline */ }
+}
 
-const restored = load();
-if (!restored) selectLeague((leagueList()[0] || {}).id, true);
-else syncControls();
+(async function start(){
+  try { unlocked = !LOCK || sessionStorage.getItem("ff-unlocked") === "1"; }
+  catch(e){ unlocked = !LOCK; }
 
-renderLock();
-render();
+  await loadPublished();
+
+  const restored = load();
+  if (!restored) selectLeague((leagueList()[0] || {}).id, true);
+  else syncControls();
+
+  renderLock();
+  render();
+})();
 </script>
 </body>
 </html>

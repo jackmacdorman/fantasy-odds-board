@@ -31,6 +31,7 @@ import getpass
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import date
@@ -43,7 +44,7 @@ HERE = Path(__file__).resolve().parent
 TEMPLATE = HERE / "app.template.html"
 OUT = HERE / "index.html"
 LEAGUES_JSON = HERE / "leagues.json"
-RATINGS_JSON = HERE / "ratings.json"
+BOARD_JSON = HERE / "board.json"
 
 # The ciphertext is public, so it is exposed to offline guessing. Iterations are
 # set high enough that each guess costs the attacker real time. Same figure as the
@@ -120,12 +121,15 @@ def build() -> str:
         sys.exit("No leagues.json — run: python3 build.py --fetch")
 
     leagues = json.loads(LEAGUES_JSON.read_text())
-    ratings = json.loads(RATINGS_JSON.read_text()) if RATINGS_JSON.exists() else {}
+    board = json.loads(BOARD_JSON.read_text()) if BOARD_JSON.exists() else {"version": 1, "leagues": {}}
     lock = make_lock(read_passphrase(interactive=sys.stdin.isatty()))
 
     page = TEMPLATE.read_text()
     page = inject(page, "LEAGUES", leagues)
-    page = inject(page, "RATINGS", ratings)
+    # Baked only as a fallback. The page fetches board.json at runtime, which is what
+    # lets Publish change the live site without anyone running a build.
+    page = inject(page, "BOARD", board)
+    page = inject(page, "REPO", repo_target())
     page = inject(page, "LOCK", lock)
     page = inject(page, "BUILT", leagues.get("fetched", date.today().isoformat()))
 
@@ -136,6 +140,16 @@ def build() -> str:
     print(f"Wrote {OUT.name} ({len(page)/1024:.0f} KB) — "
           f"{len(leagues['leagues'])} leagues, {teams} teams, {state}.")
     return page
+
+
+def repo_target() -> dict:
+    """Where the Publish button writes, read off the git remote rather than hardcoded."""
+    url = subprocess.run(["git", "remote", "get-url", "origin"], cwd=HERE,
+                         capture_output=True, text=True).stdout.strip()
+    m = re.search(r"github\.com[:/]+([^/]+)/(.+?)(?:\.git)?$", url)
+    if not m:
+        sys.exit(f"Could not read owner/repo from the git remote: {url!r}")
+    return {"owner": m.group(1), "repo": m.group(2), "branch": "main", "path": "board.json"}
 
 
 def git(*args: str) -> None:

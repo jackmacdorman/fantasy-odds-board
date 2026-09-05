@@ -14,6 +14,10 @@ python3 build.py                    # rebuild from what's on disk
 python3 espn_leagues.py --show      # just look at what ESPN returns
 ```
 
+A build is only needed for things baked into the page: ESPN data, the passphrase,
+and the app itself. Ratings and per-league settings are published from the page
+itself — see below.
+
 `index.html` is **generated** — edit `app.template.html` and rebuild. The template
 is valid HTML and JavaScript on its own, so it still opens straight from disk while
 you work on it; the baked-in data sits behind `/*__MARKER__*/` comments that
@@ -42,9 +46,47 @@ board says "no games played yet" instead of rating everyone off fake zeros.
 Owner names prefer ESPN's first/last name over `displayName`, which is often an
 auto-generated handle (this account's own reads `ESPNFAN2950190288`).
 
-Manual ratings live in `ratings.json`, keyed by league id then **ESPN team id** —
-ids, not names, so a mid-season team rename doesn't orphan a rating. Anything
-missing defaults to 50.
+## Publishing from the page
+
+Every league keeps its own dials — spread, vig, cap, rounding, ratings mode — plus
+its own ratings. They live in **`board.json`**, and the page **fetches that at
+runtime rather than baking it in**. That is the whole trick: publishing changes the
+live site for everyone without anyone running a build.
+
+Unlock the settings, edit, and press **Publish**. The page writes `board.json`
+straight to this repo through the GitHub contents API and Pages redeploys, usually
+within a minute. Publish carries a dot whenever this browser holds something the
+live site hasn't seen.
+
+It needs a **fine-grained personal access token**, this repo only, *Contents: read
+and write*. The token is entered in the page, kept in `sessionStorage` (or
+`localStorage` if you tick "remember on this device"), and sent only to
+`api.github.com`. It is never committed and never baked into the build. Treat it as
+a real credential: it can write to a repo whose page your league loads, so give it a
+short expiry, and don't tick "remember" on a shared machine. **Copy JSON instead**
+is the no-token path — it copies the file for you to commit by hand.
+
+Concurrency is handled by the blob sha: if another device published since your page
+loaded, the write is refused rather than silently overwriting, and you're told to
+reload and redo.
+
+Only leagues you actually edited are rewritten; the rest pass through exactly as
+published, so editing one board can never quietly reset the other three. Owner and
+PPG are always re-attached from ESPN by team id, so a stale published file can never
+win on facts it doesn't own.
+
+**A published board beats a device's local copy.** `board.json` carries an `updated`
+timestamp; anything saved locally before it is discarded on load. Without that, the
+laptop you last edited on would keep showing its own board forever — which is the
+exact problem publishing exists to solve. Viewers never write local state at all.
+
+Ratings are keyed by **ESPN team id**, not name, so a mid-season rename doesn't
+orphan one. Anything missing defaults to 50.
+
+Rows sort by the win market, favourite first. The sort is computed on the fair
+probability rather than the posted price, so teams pinned together at the longshot
+cap still come out in the right order, and it holds still while a row is being typed
+into.
 
 ## The settings lock
 
@@ -70,9 +112,13 @@ the file, in any form.
 
 **What it doesn't do.** It cannot stop someone opening devtools and editing their
 own copy of a public page — nothing served statically can, and any claim otherwise
-would be false. What it protects is the *published* board, and that is guarded by
-the thing that actually writes it: a push to this repo. The lock's real job is
-making sure the numbers your league argues about are the numbers you set.
+would be false. What it protects is the *published* board.
+
+Since Publish landed, that protection has real teeth. Bypassing the lock in devtools
+gets you a board only you can see: writing `board.json` needs a GitHub token with
+write access to this repo, and that is never in the page. So the lock is the
+convenience layer, and the token is the actual boundary — which is the right way
+round, because the token is the thing that can change what your league sees.
 
 Leave `SITE_PASSPHRASE` unset and the page builds with settings open and a badge
 saying so, which is the honest state until a passphrase exists.
