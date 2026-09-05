@@ -608,6 +608,13 @@ function render(){
   });
   if (clamped) warnings.push("A rating of zero or less can't be priced — treated as ~0.");
 
+  // Every team on the same rating is a correct answer to a question nobody asked:
+  // the prices are identical and the board looks broken rather than unset. Say which
+  // it is, since preseason with no ratings entered is exactly where this starts.
+  if (r.length > 1 && r.every(v => v === r[0]))
+    warnings.push("Every team is rated the same, so every price is the same. "
+      + "Set ratings to spread the board — or switch to From points once games have been played.");
+
   if (S.mode === "points" && !zRatings()){
     const lg = leagueById(S.league);
     const noneYet = S.teams.every(t => t.ppg === null || t.ppg === undefined);
