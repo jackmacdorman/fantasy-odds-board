@@ -1,5 +1,70 @@
 {
   "version": 1,
-  "updated": "2026-09-05T00:00:00Z",
-  "leagues": {}
+  "updated": "2026-09-05T15:35:46Z",
+  "leagues": {
+    "1818479777": {
+      "settings": {
+        "kWin": 2,
+        "kLast": 1.5,
+        "link": false,
+        "vig": 4.76,
+        "capOn": true,
+        "cap": 2500,
+        "tidy": true,
+        "mode": "manual"
+      },
+      "teams": [
+        {
+          "id": "9",
+          "name": "Puka Shells",
+          "rating": 78.4
+        },
+        {
+          "id": "8",
+          "name": "Jason's Finest Team",
+          "rating": 63.6
+        },
+        {
+          "id": "3",
+          "name": "I Love Coke",
+          "rating": 56.3
+        },
+        {
+          "id": "4",
+          "name": "Brown Boys and Trey",
+          "rating": 56.2
+        },
+        {
+          "id": "10",
+          "name": "R's Rowdy Team",
+          "rating": 54.4
+        },
+        {
+          "id": "5",
+          "name": "Londer's Lads 2.0",
+          "rating": 51.3
+        },
+        {
+          "id": "2",
+          "name": "Boobie Feaster",
+          "rating": 38.0
+        },
+        {
+          "id": "6",
+          "name": "Borgonovo Penetrators",
+          "rating": 36.9
+        },
+        {
+          "id": "1",
+          "name": "House Collin'",
+          "rating": 33.3
+        },
+        {
+          "id": "7",
+          "name": "Aidan's Astounding Team",
+          "rating": 31.7
+        }
+      ]
+    }
+  }
 }
