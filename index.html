@@ -54,6 +54,7 @@ th{background:#141b29;text-align:right;font-size:10.5px;text-transform:uppercase
 th.l{text-align:left}
 th.grp{text-align:center;border-bottom:2px solid var(--line);padding-bottom:5px}
 th.grp.w{color:var(--win)} th.grp.p{color:var(--last)}
+.grp .sm{display:none}
 td{padding:5px 8px;border-bottom:1px solid #1d2536;text-align:right;
   font-variant-numeric:tabular-nums;white-space:nowrap}
 td.l{text-align:left}
@@ -123,8 +124,12 @@ textarea:focus{border-color:var(--accent)}
   table{min-width:0}
   th.rank,td.rank,th.pct,td.pct{display:none}
   th,td{padding:6px 5px}
+  /* The group labels are set over a colspan, so their text sets a floor on the
+     table's width -- long ones squeezed the team names down to "Tea...". */
+  .grp .lg{display:none}
+  .grp .sm{display:inline}
   td input[type=text]{min-width:0}
-  td .num,.num{width:54px}
+  td .num,.num{width:50px}
   .odds{font-size:13.5px}
 }
 </style>
@@ -212,8 +217,8 @@ textarea:focus{border-color:var(--accent)}
           <th class="l" colspan="2"></th>
           <th class="pointsonly" colspan="2"></th>
           <th></th>
-          <th class="grp w sepL" colspan="2">Win the league</th>
-          <th class="grp p sepL" colspan="2">Last place</th>
+          <th class="grp w sepL" colspan="2"><span class="lg">Win the league</span><span class="sm">Win</span></th>
+          <th class="grp p sepL" colspan="2"><span class="lg">Last place</span><span class="sm">Last</span></th>
           <th></th>
         </tr>
         <tr>
