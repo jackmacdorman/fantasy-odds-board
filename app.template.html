@@ -601,8 +601,12 @@ function renderLock(){
 
   // pointer-events only stops the mouse. Without the disabled attribute you could
   // still tab into a faded slider and move the whole board with the arrow keys.
-  document.querySelectorAll(".lockable input, .lockable button, .lockable textarea")
-    .forEach(x => { x.disabled = !unlocked; });
+  // The bare `.lockable` matters as much as the descendants: Publish, + Team and
+  // Reset carry the class themselves rather than sitting inside a container, so a
+  // descendant-only selector silently skipped exactly the buttons that do the most.
+  document.querySelectorAll(
+    ".lockable, .lockable input, .lockable button, .lockable textarea, .lockable select"
+  ).forEach(x => { if ("disabled" in x) x.disabled = !unlocked; });
 
   if (!LOCK){
     el.innerHTML = '<span class="badge none">open</span>' +
