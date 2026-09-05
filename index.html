@@ -80,6 +80,7 @@ body.points .pointsonly{display:table-cell}
 body.points th.pointsonly{display:table-cell}
 
 .bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.stats{display:flex;gap:10px;margin-left:auto}
 .stat{background:var(--panel);border:1px solid var(--line);border-radius:7px;
   padding:7px 11px;font-size:12px;display:flex;gap:8px;align-items:baseline}
 .stat .k{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px}
@@ -224,9 +225,13 @@ textarea:focus{border-color:var(--accent)}
     <button id="copy">Copy board</button>
     <button id="share">Copy link</button>
     <button id="reset">Reset</button>
-    <div class="spacer"></div>
-    <div class="stat w"><span class="k">Win book</span><b id="hw">&mdash;</b></div>
-    <div class="stat p"><span class="k">Last book</span><b id="hp">&mdash;</b></div>
+    <!-- Grouped so the two totals wrap as a pair rather than splitting across
+         lines when the buttons take the width. Pushed right by margin, not a
+         flex spacer, which would force them onto their own line when wrapping. -->
+    <div class="stats">
+      <div class="stat w"><span class="k">Win book</span><b id="hw">&mdash;</b></div>
+      <div class="stat p"><span class="k">Last book</span><b id="hp">&mdash;</b></div>
+    </div>
   </div>
 
   <div id="note" class="note"></div>
