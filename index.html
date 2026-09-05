@@ -109,9 +109,23 @@ textarea:focus{border-color:var(--accent)}
   padding:8px 16px;border-radius:20px;opacity:0;pointer-events:none;transition:.18s}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
-@media(max-width:560px){
+@media(max-width:600px){
   .ctrls{gap:12px}
   input[type=range]{width:104px}
+
+  /* A shared link is usually opened on a phone, and it is opened to read prices.
+     Letting the table scroll sideways would put both odds columns off-screen,
+     so the width comes out of what is not a price: the row number, and the
+     probability columns, which restate the odds in another unit rather than
+     adding anything. Both are back on a wider screen, and the copied board
+     carries the percentages regardless. Every control stays -- dropping the
+     delete column would leave no way to remove a team on a phone. */
+  table{min-width:0}
+  th.rank,td.rank,th.pct,td.pct{display:none}
+  th,td{padding:6px 5px}
+  td input[type=text]{min-width:0}
+  td .num,.num{width:54px}
+  .odds{font-size:13.5px}
 }
 </style>
 </head>
@@ -203,16 +217,16 @@ textarea:focus{border-color:var(--accent)}
           <th></th>
         </tr>
         <tr>
-          <th class="l"></th>
+          <th class="l rank"></th>
           <th class="l">Team</th>
           <th class="pointsonly">PPG</th>
           <th class="pointsonly">Preseason</th>
           <th>Rating</th>
           <th class="sepL">Odds</th>
-          <th>Prob</th>
+          <th class="pct">Prob</th>
           <th class="sepL">Odds</th>
-          <th>Prob</th>
-          <th></th>
+          <th class="pct">Prob</th>
+          <th class="xcol"></th>
         </tr>
       </thead>
       <tbody id="rows"></tbody>
@@ -443,7 +457,7 @@ function render(){
       '<td class="pct faw">' + (win[i].impl*100).toFixed(1)  + '%</td>' +
       '<td class="p sepL fap"><span class="odds">' + fmtOdds(last[i]) + '</span></td>' +
       '<td class="pct fap">' + (last[i].impl*100).toFixed(1) + '%</td>' +
-      '<td><button class="del" data-del="' + i + '" title="Remove">×</button></td>';
+      '<td class="xcol"><button class="del" data-del="' + i + '" title="Remove">×</button></td>';
     tb.appendChild(tr);
   });
 
