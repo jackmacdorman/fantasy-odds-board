@@ -54,7 +54,7 @@ th{background:#141b29;text-align:right;font-size:10.5px;text-transform:uppercase
 th.l{text-align:left}
 th.grp{text-align:center;border-bottom:2px solid var(--line);padding-bottom:5px}
 th.grp.w{color:var(--win)} th.grp.p{color:var(--last)}
-.grp .sm{display:none}
+.sm{display:none}
 td{padding:5px 8px;border-bottom:1px solid #1d2536;text-align:right;
   font-variant-numeric:tabular-nums;white-space:nowrap}
 td.l{text-align:left}
@@ -124,10 +124,13 @@ textarea:focus{border-color:var(--accent)}
   table{min-width:0}
   th.rank,td.rank,th.pct,td.pct{display:none}
   th,td{padding:6px 5px}
-  /* The group labels are set over a colspan, so their text sets a floor on the
-     table's width -- long ones squeezed the team names down to "Tea...". */
-  .grp .lg{display:none}
-  .grp .sm{display:inline}
+  /* The market names move down onto the Odds headers, which span one column
+     each and so stay put. It also buys back width: "Win the league" set over a
+     colspan was a floor on the table, squeezing team names to "Tea...". */
+  .grouprow{display:none}
+  .lg{display:none}
+  .sm{display:inline}
+  th.hw{color:var(--win)} th.hp{color:var(--last)}
   td input[type=text]{min-width:0}
   td .num,.num{width:50px}
   .odds{font-size:13.5px}
@@ -213,12 +216,16 @@ textarea:focus{border-color:var(--accent)}
   <div class="tablewrap">
     <table>
       <thead>
-        <tr>
+        <!-- Spans two columns per market. Hidden on narrow screens rather than
+             re-spanned: a display:none cell drops out of its row entirely, so
+             once the Prob columns go the colspans here no longer line up with
+             the body and both labels slide a column to the right. -->
+        <tr class="grouprow">
           <th class="l" colspan="2"></th>
           <th class="pointsonly" colspan="2"></th>
           <th></th>
-          <th class="grp w sepL" colspan="2"><span class="lg">Win the league</span><span class="sm">Win</span></th>
-          <th class="grp p sepL" colspan="2"><span class="lg">Last place</span><span class="sm">Last</span></th>
+          <th class="grp w sepL" colspan="2">Win the league</th>
+          <th class="grp p sepL" colspan="2">Last place</th>
           <th></th>
         </tr>
         <tr>
@@ -227,9 +234,9 @@ textarea:focus{border-color:var(--accent)}
           <th class="pointsonly">PPG</th>
           <th class="pointsonly">Preseason</th>
           <th>Rating</th>
-          <th class="sepL">Odds</th>
+          <th class="sepL hw"><span class="lg">Odds</span><span class="sm">Win</span></th>
           <th class="pct">Prob</th>
-          <th class="sepL">Odds</th>
+          <th class="sepL hp"><span class="lg">Odds</span><span class="sm">Last</span></th>
           <th class="pct">Prob</th>
           <th class="xcol"></th>
         </tr>
