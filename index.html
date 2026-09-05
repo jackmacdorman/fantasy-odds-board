@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>League Odds Board</title>
+<style>
+:root{
+  --bg:#0f1420; --panel:#182031; --sunk:#0d121c; --line:#2a3448;
+  --txt:#e6ebf5; --dim:#8492ad; --accent:#4c9aff;
+  --win:#5ad18f;   /* the win market */
+  --last:#ff8a5c;  /* the last-place market -- warm, so the two boards never blur */
+  --warn:#ffd166;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);
+  font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
+
+header{background:var(--panel);border-bottom:1px solid var(--line);padding:12px 16px}
+.top{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+h1{font-size:16px;margin:0;font-weight:650;letter-spacing:.2px}
+.sub{color:var(--dim);font-size:12px}
+.spacer{flex:1}
+
+.ctrls{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;align-items:flex-start}
+.ctrl{display:flex;flex-direction:column;gap:5px;min-width:0}
+.ctrl>label{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;
+  color:var(--dim);font-weight:600}
+.ctrl .row{display:flex;align-items:center;gap:8px}
+input[type=range]{width:132px;accent-color:var(--accent);margin:0}
+input[type=number],input[type=text]{background:var(--sunk);border:1px solid var(--line);
+  color:var(--txt);border-radius:6px;padding:5px 8px;font:inherit;font-size:13px;outline:none}
+input[type=number]:focus,input[type=text]:focus{border-color:var(--accent)}
+.num{width:62px;text-align:right;font-variant-numeric:tabular-nums}
+button{background:#222c40;border:1px solid var(--line);color:var(--txt);
+  border-radius:6px;padding:5px 11px;font-size:12.5px;cursor:pointer;font-family:inherit}
+button:hover{background:#2b374f}
+button.on{background:var(--accent);border-color:var(--accent);color:#06101f;font-weight:600}
+button.tiny{padding:3px 7px;font-size:11px}
+.seg{display:flex;gap:0}
+.seg button{border-radius:0;margin-left:-1px}
+.seg button:first-child{border-radius:6px 0 0 6px;margin-left:0}
+.seg button:last-child{border-radius:0 6px 6px 0}
+.chk{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--dim);cursor:pointer}
+.chk input{accent-color:var(--accent);margin:0}
+.hint{font-size:11px;color:var(--dim)}
+
+main{padding:14px 16px 40px}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:640px}
+th{background:#141b29;text-align:right;font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.5px;color:var(--dim);font-weight:600;padding:8px;
+  border-bottom:1px solid var(--line);white-space:nowrap}
+th.l{text-align:left}
+th.grp{text-align:center;border-bottom:2px solid var(--line);padding-bottom:5px}
+th.grp.w{color:var(--win)} th.grp.p{color:var(--last)}
+td{padding:5px 8px;border-bottom:1px solid #1d2536;text-align:right;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+td.l{text-align:left}
+tbody tr:hover td{background:#1b2333}
+td input[type=text]{width:100%;min-width:120px;border-color:transparent;background:transparent;padding:4px 6px}
+td input[type=text]:hover{border-color:var(--line)}
+td input[type=text]:focus{border-color:var(--accent);background:var(--sunk)}
+td .num{width:66px}
+.rank{color:var(--dim);font-size:11px;width:22px;text-align:right}
+.odds{font-weight:650;font-size:14px}
+.w .odds{color:var(--win)} .p .odds{color:var(--last)}
+.pct{color:var(--dim);font-size:12px}
+/* Each market marks its own shortest price. A row can be favourite in one board
+   without being favourite in the other, so the two classes stay separate. */
+tr.favW td.faw,tr.favL td.fap{background:#1b2333}
+.sepL{border-left:1px solid var(--line)}
+.derived{color:var(--dim);background:#141b29}
+.del{background:transparent;border-color:transparent;color:var(--dim);
+  padding:2px 6px;font-size:14px;line-height:1}
+.del:hover{background:#33202a;color:#ff5a68;border-color:#4a2b35}
+
+.pointsonly{display:none}
+body.points .pointsonly{display:table-cell}
+body.points th.pointsonly{display:table-cell}
+
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:7px;
+  padding:7px 11px;font-size:12px;display:flex;gap:8px;align-items:baseline}
+.stat .k{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px}
+.stat b{font-size:14px;font-weight:650;font-variant-numeric:tabular-nums}
+.stat.w b{color:var(--win)} .stat.p b{color:var(--last)}
+.note{color:var(--warn);font-size:12px;margin-top:9px;display:none}
+.note.show{display:block}
+
+details{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
+summary{cursor:pointer;padding:9px 12px;font-size:12.5px;font-weight:600;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"\25B8";display:inline-block;margin-right:8px;color:var(--dim);
+  transition:transform .12s}
+details[open] summary::before{transform:rotate(90deg)}
+.body{padding:0 12px 12px;font-size:13px;color:var(--dim);line-height:1.6}
+.body p{margin:0 0 9px}
+.body b,.body strong{color:var(--txt)}
+.body code{background:var(--sunk);border:1px solid var(--line);border-radius:4px;
+  padding:1px 5px;font-size:12px;color:var(--txt)}
+textarea{width:100%;min-height:132px;background:var(--sunk);border:1px solid var(--line);
+  color:var(--txt);border-radius:6px;padding:8px;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+  outline:none;resize:vertical}
+textarea:focus{border-color:var(--accent)}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(10px);
+  background:var(--accent);color:#06101f;font-weight:600;font-size:13px;
+  padding:8px 16px;border-radius:20px;opacity:0;pointer-events:none;transition:.18s}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+@media(max-width:560px){
+  .ctrls{gap:12px}
+  input[type=range]{width:104px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="top">
+    <h1>League Odds Board</h1>
+    <span class="sub">power ratings &rarr; a two-sided market</span>
+  </div>
+
+  <div class="ctrls">
+    <div class="ctrl">
+      <label>Spread &mdash; win (k)</label>
+      <div class="row">
+        <input type="range" id="kwR" min="0.5" max="8" step="0.25" value="3">
+        <input type="number" id="kwN" class="num" min="0.1" max="20" step="0.25" value="3">
+      </div>
+    </div>
+
+    <div class="ctrl">
+      <label>Spread &mdash; last (k)</label>
+      <div class="row">
+        <input type="range" id="klR" min="0.5" max="8" step="0.25" value="2">
+        <input type="number" id="klN" class="num" min="0.1" max="20" step="0.25" value="2">
+        <button id="link" class="tiny" title="Match the win spread">link</button>
+      </div>
+    </div>
+
+    <div class="ctrl">
+      <label>Vig (hold)</label>
+      <div class="row">
+        <input type="range" id="vgR" min="0" max="20" step="0.25" value="4.76">
+        <input type="number" id="vgN" class="num" min="0" max="60" step="0.25" value="4.76">
+        <span class="hint">%</span>
+      </div>
+      <div class="row">
+        <button class="tiny" data-vig="0">fair</button>
+        <button class="tiny" data-vig="4.76">&minus;110</button>
+        <button class="tiny" data-vig="8">8%</button>
+      </div>
+    </div>
+
+    <div class="ctrl">
+      <label>Longshot cap</label>
+      <div class="row">
+        <label class="chk"><input type="checkbox" id="capOn" checked> max</label>
+        <input type="number" id="capN" class="num" min="200" max="100000" step="100" value="2500">
+      </div>
+    </div>
+
+    <div class="ctrl">
+      <label>Display</label>
+      <div class="row">
+        <div class="seg">
+          <button id="fA" class="on">American</button>
+          <button id="fD">Decimal</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="tidy" checked> tidy</label>
+      </div>
+    </div>
+
+    <div class="ctrl">
+      <label>Ratings</label>
+      <div class="row">
+        <div class="seg">
+          <button id="mM" class="on">Manual</button>
+          <button id="mP">From points</button>
+        </div>
+        <span id="gWrap" class="row" style="display:none">
+          <span class="hint">games</span>
+          <input type="number" id="games" class="num" min="1" max="17" step="1" value="6" style="width:48px">
+        </span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="l" colspan="2"></th>
+          <th class="pointsonly" colspan="2"></th>
+          <th></th>
+          <th class="grp w sepL" colspan="2">Win the league</th>
+          <th class="grp p sepL" colspan="2">Last place</th>
+          <th></th>
+        </tr>
+        <tr>
+          <th class="l"></th>
+          <th class="l">Team</th>
+          <th class="pointsonly">PPG</th>
+          <th class="pointsonly">Preseason</th>
+          <th>Rating</th>
+          <th class="sepL">Odds</th>
+          <th>Prob</th>
+          <th class="sepL">Odds</th>
+          <th>Prob</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <div class="bar">
+    <button id="add">+ Team</button>
+    <button id="sort">Sort by rating</button>
+    <button id="copy">Copy board</button>
+    <button id="share">Copy link</button>
+    <button id="reset">Reset</button>
+    <div class="spacer"></div>
+    <div class="stat w"><span class="k">Win book</span><b id="hw">&mdash;</b></div>
+    <div class="stat p"><span class="k">Last book</span><b id="hp">&mdash;</b></div>
+  </div>
+
+  <div id="note" class="note"></div>
+
+  <details>
+    <summary>Paste a team list</summary>
+    <div class="body">
+      <p>One team per line, <code>Name, number</code>. The number fills the
+         <b>Rating</b> column in Manual mode and the <b>PPG</b> column in From&nbsp;points mode.
+         A line with no number keeps a default. This replaces the whole list.</p>
+      <textarea id="paste" placeholder="Ligma Ep, 118.4&#10;Rollin' Deep, 112.0&#10;Modern Family Fantasy, 109.7"></textarea>
+      <div class="bar"><button id="doPaste">Import</button></div>
+    </div>
+  </details>
+
+  <details>
+    <summary>How the numbers are made</summary>
+    <div class="body">
+      <p><b>Ratings become probabilities</b> through <code>P = rating^k / &Sigma; rating^k</code>
+         &mdash; a Luce model, the same shape real power-rating books use.</p>
+      <p><b>k is the spread dial, and it works on ratios, not gaps.</b> It never changes
+         the order, only how far apart the prices sit. Rating your teams 88 and 30 is a
+         2.9&times; ratio; 88 and 80 is 1.1&times; and barely separates at all. So the scale you
+         rate on matters as much as k. Pick a k that puts your best team somewhere you'd
+         actually bet &mdash; +250 to +400 in a ten-team league &mdash; then leave it alone and
+         move the ratings, not the model.</p>
+      <p><b>Last place is not "doesn't win."</b> Inverting <code>1&minus;p</code> would be wrong.
+         The same model runs with the exponent's sign flipped, <code>rating^&minus;k</code>, so the
+         worst team becomes the favourite and the two boards stay internally consistent.
+         That inversion compresses the good teams and blows out the bad one, which is why
+         the last-place pool gets its own k &mdash; usually a lower one.</p>
+      <p><b>Vig is a multiplier on every probability</b> before it becomes a price. At 8%
+         the implied percentages sum to 108% and that 8% is your hold. <b>4.76% is the
+         standard ten-cent line</b>: &minus;110 implies 110/210 = 52.38%, and 0.5238/0.50 = 1.0476.
+         For a friendly league 0% usually plays better. The slider steps by 0.25 and the box
+         takes any value, so exact holds are reachable.</p>
+      <p><b>The cap floors a price, which costs you hold.</b> +2500 is a 3.85% implied floor;
+         anything longer gets lifted to it, and the book total above counts what that
+         actually costs. Longshots past about +5000 look silly and nobody bets them.</p>
+      <p><b>Tidy</b> rounds to the increments a real board quotes &mdash; nearest 5 up to 400,
+         then 10, then 25. The probabilities shown are read back off the posted price, so
+         every column agrees with what you'd actually be laying.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>Picking ratings</summary>
+    <div class="body">
+      <p><b>Start from points scored, not record.</b> Fantasy record is mostly schedule luck
+         &mdash; a 4&ndash;4 team that has scored the most points in the league is better than a
+         6&ndash;2 team sitting eighth. Points per game is the most predictive single number
+         you have.</p>
+      <p><b>The rescaling matters more than the source.</b> Raw PPG is compressed: 130 against
+         100 is only 1.3&times;, which barely separates at any sane k. <b>From points</b> mode
+         converts to z-scores and re-centres &mdash;
+         <code>50 + 15 &times; (PPG &minus; league avg) / stdev</code> &mdash; mapping a normal league
+         onto roughly 20&ndash;80. A league where everyone scores alike produces a naturally
+         flat board, which is correct.</p>
+      <p><b>Shrink early.</b> Three games of scoring is mostly noise. Fill the
+         <b>Preseason</b> column and the mode blends toward it by
+         <code>w = games / (games + 4)</code> &mdash; at week 3 the prior still carries 57%, and
+         by week 8 it has washed out. Leave the column empty and no shrink is applied.</p>
+      <p><b>Then adjust by hand, sparingly.</b> A season-ending injury or a single 190-point
+         week deserves a nudge. Cap yourself at about &plusmn;8 points so the model still does
+         the work. If your eye and the model disagree on third, trust the model; if they
+         disagree on first, go find the outlier week driving it.</p>
+      <p><b>Decide up front whether the ratings are published.</b> If the league can see the
+         inputs they'll argue about the ratings instead of the odds, which is the healthier
+         fight. <b>Copy link</b> packs the whole board into a URL &mdash; nothing is uploaded,
+         and anyone who opens it sees exactly your inputs.</p>
+    </div>
+  </details>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script>
+"use strict";
+
+/* ---------- state ---------- */
+
+const DEFAULTS = [
+  ["Team 1",88],["Team 2",82],["Team 3",76],["Team 4",72],["Team 5",67],
+  ["Team 6",61],["Team 7",55],["Team 8",49],["Team 9",40],["Team 10",30]
+];
+
+const S = {
+  teams: DEFAULTS.map(([name,rating]) => ({name, rating, ppg:null, pre:null})),
+  kWin: 3, kLast: 2, link: false,
+  vig: 4.76,
+  capOn: true, cap: 2500,
+  tidy: true, fmt: "american",
+  mode: "manual", games: 6
+};
+
+const $ = s => document.querySelector(s);
+
+/* ---------- odds maths ---------- */
+
+// Luce model. A negative k is the last-place board: same ratings, sign flipped.
+function normalise(ratings, k){
+  const w = ratings.map(r => Math.pow(r, k));
+  const sum = w.reduce((a,b) => a+b, 0);
+  return (sum > 0 && isFinite(sum)) ? w.map(x => x/sum) : ratings.map(() => 1/ratings.length);
+}
+
+// Round to the increments a board actually quotes.
+function tidyPrice(o){
+  const sign = o < 0 ? -1 : 1, a = Math.abs(o);
+  const step = a <= 400 ? 5 : a <= 1000 ? 10 : 25;
+  return sign * Math.max(Math.round(a/step)*step, 100);
+}
+
+// Fair probability -> the price you post. Vig first, then the cap, then rounding.
+// Everything downstream is read back off the posted price, so the probability and
+// decimal columns describe the bet on offer rather than the model behind it.
+function price(pFair){
+  let p = pFair * (1 + S.vig/100);
+  if (S.capOn) p = Math.max(p, 100/(S.cap + 100));
+  p = Math.min(Math.max(p, 1e-9), 0.9999);
+
+  let o = p >= 0.5 ? -100*p/(1-p) : 100*(1-p)/p;
+  if (S.tidy) o = tidyPrice(o);
+
+  const impl = o > 0 ? 100/(o+100) : (-o)/((-o)+100);
+  return { o, impl, dec: o > 0 ? 1 + o/100 : 1 + 100/(-o) };
+}
+
+const fmtAm  = o => (o > 0 ? "+" : "−") + Math.round(Math.abs(o));
+const fmtAsc = o => (o > 0 ? "+" : "-") + Math.round(Math.abs(o));
+const fmtOdds = r => S.fmt === "american" ? fmtAm(r.o) : r.dec.toFixed(2);
+
+/* ---------- ratings from points ---------- */
+
+function zRatings(){
+  const vals = S.teams.map(t => Number(t.ppg));
+  if (vals.some(v => !isFinite(v) || v === 0)) return null;   // needs every team
+
+  const n = vals.length;
+  const mean = vals.reduce((a,b) => a+b, 0) / n;
+  const sd = n > 1
+    ? Math.sqrt(vals.reduce((a,b) => a + (b-mean)**2, 0) / (n-1))  // sample stdev, = STDEV()
+    : 0;
+
+  const z = vals.map(v => sd ? 50 + 15*(v-mean)/sd : 50);
+
+  // Shrink toward preseason only if the column is actually filled in.
+  const pres = S.teams.map(t => Number(t.pre));
+  if (pres.every(p => isFinite(p) && p > 0)){
+    const g = Math.max(0, S.games), w = g/(g+4);
+    return z.map((v,i) => w*v + (1-w)*pres[i]);
+  }
+  return z;
+}
+
+function effectiveRatings(){
+  if (S.mode === "points"){
+    const z = zRatings();
+    if (z) return z;
+  }
+  return S.teams.map(t => Number(t.rating));
+}
+
+/* ---------- render ---------- */
+
+function render(){
+  document.body.classList.toggle("points", S.mode === "points");
+
+  const raw = effectiveRatings();
+  const warnings = [];
+
+  // rating^-k needs a positive base; substitute an epsilon rather than break the board.
+  let clamped = false;
+  const r = raw.map(v => {
+    if (!isFinite(v) || v <= 0){ clamped = true; return 1e-6; }
+    return v;
+  });
+  if (clamped) warnings.push("A rating of zero or less can't be priced — treated as ~0.");
+  if (S.mode === "points" && !zRatings())
+    warnings.push("Fill in PPG for every team to derive ratings — showing manual ratings until then.");
+
+  const pW = normalise(r, S.kWin);
+  const pL = normalise(r, -S.kLast);
+
+  const win  = pW.map(price);
+  const last = pL.map(price);
+
+  const bestW = win.indexOf(win.reduce((a,b) => a.o > b.o ? b : a));   // shortest price
+  const bestL = last.indexOf(last.reduce((a,b) => a.o > b.o ? b : a));
+
+  const tb = $("#rows");
+  tb.innerHTML = "";
+
+  S.teams.forEach((t, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td class="rank">' + (i+1) + '</td>' +
+      '<td class="l"><input type="text" data-f="name" data-i="' + i + '" value="' +
+        String(t.name).replace(/"/g,"&quot;") + '"></td>' +
+      '<td class="pointsonly"><input type="number" step="0.1" class="num" data-f="ppg" data-i="' + i +
+        '" value="' + (t.ppg ?? "") + '"></td>' +
+      '<td class="pointsonly"><input type="number" step="1" class="num" data-f="pre" data-i="' + i +
+        '" value="' + (t.pre ?? "") + '"></td>' +
+      (S.mode === "points" && zRatings()
+        ? '<td class="derived">' + r[i].toFixed(1) + '</td>'
+        : '<td><input type="number" step="1" class="num" data-f="rating" data-i="' + i +
+          '" value="' + t.rating + '"></td>') +
+      '<td class="w sepL faw"><span class="odds">' + fmtOdds(win[i])  + '</span></td>' +
+      '<td class="pct faw">' + (win[i].impl*100).toFixed(1)  + '%</td>' +
+      '<td class="p sepL fap"><span class="odds">' + fmtOdds(last[i]) + '</span></td>' +
+      '<td class="pct fap">' + (last[i].impl*100).toFixed(1) + '%</td>' +
+      '<td><button class="del" data-del="' + i + '" title="Remove">×</button></td>';
+    tb.appendChild(tr);
+  });
+
+  const holdW = win.reduce((a,b)  => a + b.impl, 0) * 100;
+  const holdL = last.reduce((a,b) => a + b.impl, 0) * 100;
+  $("#hw").textContent = holdW.toFixed(1) + "%";
+  $("#hp").textContent = holdL.toFixed(1) + "%";
+
+  // How much of the hold is the cap rather than the vig you dialled in.
+  if (S.capOn){
+    const over = holdW - (100 + S.vig);
+    if (over > 0.4)
+      warnings.push("The cap is adding " + over.toFixed(1) +
+        " points of hold to the win book on top of your " + S.vig + "% vig.");
+  }
+
+  const note = $("#note");
+  note.textContent = warnings.join("  ");
+  note.classList.toggle("show", warnings.length > 0);
+
+  const rows = tb.querySelectorAll("tr");
+  if (rows[bestW]) rows[bestW].classList.add("favW");
+  if (rows[bestL]) rows[bestL].classList.add("favL");
+
+  save();
+}
+
+/* ---------- editing ---------- */
+
+$("#rows").addEventListener("input", e => {
+  const el = e.target, i = +el.dataset.i, f = el.dataset.f;
+  if (f === undefined) return;
+  if (f === "name") { S.teams[i].name = el.value; save(); return; }   // no re-render: keeps focus
+  S.teams[i][f] = el.value === "" ? null : Number(el.value);
+  const at = document.activeElement, k = at && at.dataset ? at.dataset.f + at.dataset.i : null;
+  render();
+  if (k){ const back = document.querySelector('[data-f="' + at.dataset.f + '"][data-i="' + at.dataset.i + '"]');
+          if (back) back.focus(); }
+});
+
+$("#rows").addEventListener("click", e => {
+  const d = e.target.dataset.del;
+  if (d === undefined) return;
+  if (S.teams.length <= 2) return toast("Need at least two teams");
+  S.teams.splice(+d, 1);
+  render();
+});
+
+/* ---------- controls ---------- */
+
+function pair(rangeId, numId, key, after){
+  const R = $(rangeId), N = $(numId);
+  const set = v => {
+    v = Number(v);
+    if (!isFinite(v)) return;
+    S[key] = v; R.value = v; N.value = v;
+    if (after) after();
+    render();
+  };
+  R.addEventListener("input", e => set(e.target.value));
+  N.addEventListener("input", e => set(e.target.value));
+  return set;
+}
+
+const setKw = pair("#kwR", "#kwN", "kWin", () => {
+  if (S.link){ S.kLast = S.kWin; $("#klR").value = S.kWin; $("#klN").value = S.kWin; }
+});
+const setKl = pair("#klR", "#klN", "kLast", () => { S.link = false; $("#link").classList.remove("on"); });
+const setVig = pair("#vgR", "#vgN", "vig");
+
+$("#link").addEventListener("click", () => {
+  S.link = !S.link;
+  $("#link").classList.toggle("on", S.link);
+  if (S.link) setKw(S.kWin);
+});
+
+document.querySelectorAll("[data-vig]").forEach(b =>
+  b.addEventListener("click", () => setVig(b.dataset.vig)));
+
+$("#capOn").addEventListener("change", e => { S.capOn = e.target.checked; render(); });
+$("#capN").addEventListener("input",  e => { S.cap = Number(e.target.value) || 2500; render(); });
+$("#tidy").addEventListener("change", e => { S.tidy = e.target.checked; render(); });
+$("#games").addEventListener("input", e => { S.games = Number(e.target.value) || 0; render(); });
+
+function seg(aId, bId, key, aVal, bVal, extra){
+  const A = $(aId), B = $(bId);
+  const pick = v => {
+    S[key] = v;
+    A.classList.toggle("on", v === aVal);
+    B.classList.toggle("on", v === bVal);
+    if (extra) extra(v);
+    render();
+  };
+  A.addEventListener("click", () => pick(aVal));
+  B.addEventListener("click", () => pick(bVal));
+  return pick;
+}
+const setFmt  = seg("#fA", "#fD", "fmt", "american", "decimal");
+const setMode = seg("#mM", "#mP", "mode", "manual", "points",
+  v => $("#gWrap").style.display = v === "points" ? "flex" : "none");
+
+$("#add").addEventListener("click", () => {
+  S.teams.push({ name: "Team " + (S.teams.length+1), rating: 50, ppg: null, pre: null });
+  render();
+});
+
+$("#sort").addEventListener("click", () => {
+  const r = effectiveRatings();
+  S.teams = S.teams
+    .map((t,i) => [t, isFinite(r[i]) ? r[i] : 0])
+    .sort((a,b) => b[1] - a[1])
+    .map(x => x[0]);
+  render();
+});
+
+$("#reset").addEventListener("click", () => {
+  S.teams = DEFAULTS.map(([name,rating]) => ({name, rating, ppg:null, pre:null}));
+  render();
+  toast("Board reset");
+});
+
+$("#doPaste").addEventListener("click", () => {
+  const lines = $("#paste").value.split("\n").map(s => s.trim()).filter(Boolean);
+  if (!lines.length) return toast("Nothing to import");
+
+  const teams = lines.map((line, i) => {
+    // Split on the LAST comma/tab/run-of-spaces, so "Team, The" keeps its comma.
+    const m = line.match(/^(.*?)[\s,\t]+(-?[\d.]+)$/);
+    const name = (m ? m[1] : line).trim().replace(/[,\t]+$/, "") || ("Team " + (i+1));
+    const num  = m ? Number(m[2]) : null;
+    return S.mode === "points"
+      ? { name, rating: 50, ppg: num, pre: null }
+      : { name, rating: num ?? 50, ppg: null, pre: null };
+  });
+
+  if (teams.length < 2) return toast("Need at least two teams");
+  S.teams = teams;
+  render();
+  toast("Imported " + teams.length + " teams");
+});
+
+/* ---------- copy out ---------- */
+
+function board(){
+  const r = effectiveRatings().map(v => (isFinite(v) && v > 0) ? v : 1e-6);
+  const win  = normalise(r,  S.kWin ).map(price);
+  const last = normalise(r, -S.kLast).map(price);
+  return S.teams.map((t,i) => ({ name: t.name, win: win[i], last: last[i] }));
+}
+
+$("#copy").addEventListener("click", () => {
+  const b = board();
+  const w = Math.max(...b.map(x => x.name.length));
+  const line = x => "  " + x.name.padEnd(w) + "  " +
+    fmtAsc(x.o).padStart(7) + "   " + (x.impl*100).toFixed(1).padStart(5) + "%";
+
+  // Each market is listed shortest price first, which is the order people read.
+  const market = key => b.slice()
+    .sort((a,c) => c[key].impl - a[key].impl)
+    .map(x => line({ name: x.name, o: x[key].o, impl: x[key].impl }))
+    .join("\n");
+
+  const txt =
+    "WIN THE LEAGUE\n" + market("win") +
+    "\n\nLAST PLACE\n"  + market("last") +
+    "\n\n" + $("#hw").textContent + " / " + $("#hp").textContent + " book";
+
+  copy(txt, "Board copied");
+});
+
+$("#share").addEventListener("click", () => {
+  const url = location.origin + location.pathname + "#" + encode();
+  copy(url, "Link copied");
+});
+
+function copy(text, msg){
+  // navigator.clipboard is absent outside a secure context and can reject even
+  // inside one, so both failure shapes fall back to a selectable prompt.
+  try {
+    navigator.clipboard.writeText(text).then(() => toast(msg), () => window.prompt("Copy:", text));
+  } catch (e) {
+    window.prompt("Copy:", text);
+  }
+}
+
+let toastT;
+function toast(msg){
+  const el = $("#toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastT);
+  toastT = setTimeout(() => el.classList.remove("show"), 1700);
+}
+
+/* ---------- persistence ---------- */
+
+const b64e = s => btoa(String.fromCharCode(...new TextEncoder().encode(s)))
+  .replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+const b64d = s => new TextDecoder().decode(
+  Uint8Array.from(atob(s.replace(/-/g,"+").replace(/_/g,"/")), c => c.charCodeAt(0)));
+
+const encode = () => b64e(JSON.stringify(S));
+
+function apply(obj){
+  if (!obj || !Array.isArray(obj.teams) || obj.teams.length < 2) return false;
+  Object.assign(S, obj);
+  S.teams = obj.teams.map(t => ({
+    name: String(t.name ?? "Team"),
+    rating: Number(t.rating) || 50,
+    ppg: t.ppg == null ? null : Number(t.ppg),
+    pre: t.pre == null ? null : Number(t.pre)
+  }));
+  return true;
+}
+
+function syncControls(){
+  $("#kwR").value = $("#kwN").value = S.kWin;
+  $("#klR").value = $("#klN").value = S.kLast;
+  $("#vgR").value = $("#vgN").value = S.vig;
+  $("#capOn").checked = S.capOn;
+  $("#capN").value = S.cap;
+  $("#tidy").checked = S.tidy;
+  $("#games").value = S.games;
+  $("#link").classList.toggle("on", !!S.link);
+  $("#fA").classList.toggle("on", S.fmt === "american");
+  $("#fD").classList.toggle("on", S.fmt === "decimal");
+  $("#mM").classList.toggle("on", S.mode === "manual");
+  $("#mP").classList.toggle("on", S.mode === "points");
+  $("#gWrap").style.display = S.mode === "points" ? "flex" : "none";
+}
+
+function save(){
+  try { localStorage.setItem("oddsboard", JSON.stringify(S)); } catch(e){}
+}
+
+function load(){
+  // A link beats whatever is stored, so a shared board always opens as sent.
+  if (location.hash.length > 1){
+    try {
+      if (apply(JSON.parse(b64d(location.hash.slice(1))))){
+        history.replaceState(null, "", location.pathname);   // don't re-apply on refresh
+        return;
+      }
+    } catch(e){ toast("That link couldn't be read"); }
+  }
+  try {
+    const raw = localStorage.getItem("oddsboard");
+    if (raw) apply(JSON.parse(raw));
+  } catch(e){}
+}
+
+load();
+syncControls();
+render();
+</script>
+</body>
+</html>
