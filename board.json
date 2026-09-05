@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updated": "2026-09-05T15:40:30.210Z",
+  "updated": "2026-09-05T15:52:26.112Z",
   "leagues": {
     "1818479777": {
       "settings": {
-        "kWin": 5,
-        "kLast": 5,
+        "kWin": 3,
+        "kLast": 3,
         "link": false,
         "vig": 4.76,
         "capOn": true,
@@ -22,7 +22,7 @@
         {
           "id": "2",
           "name": "Boobie Feaster",
-          "rating": 87
+          "rating": 88
         },
         {
           "id": "3",
